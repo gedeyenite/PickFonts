@@ -1,8 +1,8 @@
-# Modern Font Picker
+# PickFonts
 
 A fast, lightweight, native macOS font preview and selection utility written in SwiftUI.
 
-Inspired by the classic legacy utility *Font Picker* (fontpicker.net), this project is a clean-room rewrite built from the ground up for modern macOS releases and Apple Silicon (ARM64) architecture.
+PickFonts is a clean-room rewrite built from the ground up for modern macOS releases and Apple Silicon (ARM64) architecture, inspired by the utility concept of classic web and desktop font comparison tools.
 
 ## Features
 
@@ -20,7 +20,7 @@ Requires macOS 14.0+ and Xcode Command Line Tools.
 ./build.sh
 ```
 
-The script compiles the standalone `Font Picker.app` bundle ready to run.
+The script compiles the standalone `PickFonts.app` bundle ready to run.
 
 ## License
 

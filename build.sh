@@ -1,33 +1,33 @@
 #!/bin/bash
 set -e
 
-echo "Compiling ModernFontPicker for macOS (ARM64)..."
-swiftc -O -parse-as-library -target arm64-apple-macos14.0 main.swift -o ModernFontPicker -framework SwiftUI -framework AppKit
+echo "Compiling PickFonts for macOS (ARM64)..."
+swiftc -O -parse-as-library -target arm64-apple-macos14.0 main.swift -o PickFonts -framework SwiftUI -framework AppKit
 
 echo "Creating application bundle..."
-mkdir -p "Font Picker.app/Contents/MacOS"
-mkdir -p "Font Picker.app/Contents/Resources"
+mkdir -p "PickFonts.app/Contents/MacOS"
+mkdir -p "PickFonts.app/Contents/Resources"
 
-mv ModernFontPicker "Font Picker.app/Contents/MacOS/Font Picker"
-chmod +x "Font Picker.app/Contents/MacOS/Font Picker"
+mv PickFonts "PickFonts.app/Contents/MacOS/PickFonts"
+chmod +x "PickFonts.app/Contents/MacOS/PickFonts"
 
 if [ -f "AppIcon.icns" ]; then
-    cp AppIcon.icns "Font Picker.app/Contents/Resources/AppIcon.icns"
+    cp AppIcon.icns "PickFonts.app/Contents/Resources/AppIcon.icns"
 fi
 
-cat << 'PLIST' > "Font Picker.app/Contents/Info.plist"
+cat << 'PLIST' > "PickFonts.app/Contents/Info.plist"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>Font Picker</string>
+    <string>PickFonts</string>
     <key>CFBundleIdentifier</key>
-    <string>net.fontpicker.modern</string>
+    <string>net.pickfonts.app</string>
     <key>CFBundleName</key>
-    <string>Font Picker</string>
+    <string>PickFonts</string>
     <key>CFBundleDisplayName</key>
-    <string>Font Picker</string>
+    <string>PickFonts</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>
@@ -44,4 +44,4 @@ cat << 'PLIST' > "Font Picker.app/Contents/Info.plist"
 </plist>
 PLIST
 
-echo "Build complete: Font Picker.app"
+echo "Build complete: PickFonts.app"

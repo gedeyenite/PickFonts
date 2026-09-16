@@ -185,9 +185,9 @@ struct ContentView: View {
 }
 
 @main
-struct ModernFontPickerApp: App {
+struct PickFontsApp: App {
     var body: some Scene {
-        WindowGroup("Font Picker") {
+        WindowGroup("PickFonts") {
             ContentView()
         }
     }
