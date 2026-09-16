@@ -2,7 +2,7 @@
 set -e
 
 echo "Compiling ModernFontPicker for macOS (ARM64)..."
-swiftc -O -target arm64-apple-macos14.0 main.swift -o ModernFontPicker -framework SwiftUI -framework AppKit
+swiftc -O -parse-as-library -target arm64-apple-macos14.0 main.swift -o ModernFontPicker -framework SwiftUI -framework AppKit
 
 echo "Creating application bundle..."
 mkdir -p "Font Picker.app/Contents/MacOS"
