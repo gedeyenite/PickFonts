@@ -11,6 +11,7 @@ PickFonts is a clean-room rewrite built from the ground up for modern macOS rele
 - **Interactive Sizing & Previewing:** Instant text customization and size adjustments.
 - **Quick Jump & Search:** A–Z fast-index navigation and instant substring filtering.
 - **Favorites & Pinning:** Pin your favorite fonts to the top of the list, toggle a "Favorites Only" view, and copy your shortlisted font names. Favorites persist automatically across restarts.
+- **Font List Files (`.flxml`):** Full backward compatibility with classic Font Picker `.flxml` files. Open, Save, and Save As your custom preview phrase and shortlisted fonts with `⌘O` / `⌘S`, or drag and drop files directly into the app.
 - **Font Culling:** Dismiss unwanted fonts from the view with a single click to narrow down your final selections.
 
 ## Download

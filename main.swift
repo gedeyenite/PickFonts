@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct FontItem: Identifiable, Hashable {
     let id: String
@@ -14,9 +15,12 @@ final class FontPickerViewModel: ObservableObject {
     @Published var removedFontIDs: Set<String> = []
     @Published var favoriteFontIDs: Set<String> = []
     @Published var showFavoritesOnly: Bool = false
+    @Published var currentFileURL: URL? = nil
+    @Published var statusMessage: String? = nil
     
     let allFonts: [FontItem]
     private let favoritesStorageKey = "PickFonts_FavoriteFontIDs"
+    private var statusDismissTask: DispatchWorkItem?
     
     init() {
         let families = NSFontManager.shared.availableFontFamilies.sorted {
@@ -90,24 +94,167 @@ final class FontPickerViewModel: ObservableObject {
     func restoreAll() {
         withAnimation(.easeInOut(duration: 0.2)) {
             removedFontIDs.removeAll()
+            currentFileURL = nil
         }
+        postStatus("Restored all fonts")
     }
     
     func copyFontNames() {
         let text = visibleFonts.map { $0.family }.joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        postStatus("Copied \(visibleFonts.count) font names to clipboard")
     }
     
     func copyPinnedFontNames() {
         let text = pinnedFonts.map { $0.family }.joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        postStatus("Copied \(pinnedFonts.count) pinned font names to clipboard")
+    }
+    
+    func postStatus(_ msg: String) {
+        statusDismissTask?.cancel()
+        statusMessage = msg
+        let task = DispatchWorkItem { [weak self] in
+            withAnimation {
+                self?.statusMessage = nil
+            }
+        }
+        statusDismissTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0, execute: task)
+    }
+    
+    // MARK: - .flxml Open / Save Support
+    
+    func openFile() {
+        let panel = NSOpenPanel()
+        panel.title = "Open Font List"
+        panel.message = "Select a .flxml Font List file"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        if let flxmlType = UTType(filenameExtension: "flxml") {
+            panel.allowedContentTypes = [flxmlType, .xml]
+        } else {
+            panel.allowedContentTypes = [.xml]
+        }
+        
+        if panel.runModal() == .OK, let url = panel.url {
+            loadFromFile(url: url)
+        }
+    }
+    
+    func saveFile() {
+        if let url = currentFileURL {
+            saveToFile(url: url)
+        } else {
+            saveFileAs()
+        }
+    }
+    
+    func saveFileAs() {
+        let panel = NSSavePanel()
+        panel.title = "Save Font List"
+        panel.message = "Choose a location to save your font list (.flxml)"
+        panel.nameFieldStringValue = currentFileURL?.lastPathComponent ?? "MyFontList.flxml"
+        if let flxmlType = UTType(filenameExtension: "flxml") {
+            panel.allowedContentTypes = [flxmlType, .xml]
+        } else {
+            panel.allowedContentTypes = [.xml]
+        }
+        panel.isExtensionHidden = false
+        
+        if panel.runModal() == .OK, let url = panel.url {
+            saveToFile(url: url)
+        }
+    }
+    
+    func saveToFile(url: URL) {
+        do {
+            let root = XMLElement(name: "FontList")
+            let sampleAttr = XMLNode.attribute(withName: "SampleText", stringValue: sampleText) as! XMLNode
+            root.addAttribute(sampleAttr)
+            
+            let fontsElement = XMLElement(name: "Fonts")
+            for font in visibleFonts {
+                let fontNode = XMLElement(name: "Font", stringValue: font.family)
+                fontsElement.addChild(fontNode)
+            }
+            root.addChild(fontsElement)
+            
+            let doc = XMLDocument(rootElement: root)
+            doc.version = "1.0"
+            doc.characterEncoding = "UTF-8"
+            
+            let xmlData = doc.xmlData(options: [.nodePrettyPrint])
+            try xmlData.write(to: url, options: .atomic)
+            
+            self.currentFileURL = url
+            postStatus("Saved \(visibleFonts.count) fonts to \(url.lastPathComponent)")
+        } catch {
+            postStatus("Save failed: \(error.localizedDescription)")
+        }
+    }
+    
+    func loadFromFile(url: URL) {
+        do {
+            let doc = try XMLDocument(contentsOf: url, options: [])
+            guard let root = doc.rootElement(), root.name == "FontList" else {
+                postStatus("Error: Not a valid FontList XML file.")
+                return
+            }
+            
+            var loadedSample = root.attribute(forName: "SampleText")?.stringValue
+            if loadedSample == nil {
+                loadedSample = root.elements(forName: "SampleText").first?.stringValue
+            }
+            
+            let fontNodes = try doc.nodes(forXPath: "//FontList/Fonts/Font")
+            var fileFontNames: [String] = []
+            for node in fontNodes {
+                if let val = node.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !val.isEmpty {
+                    fileFontNames.append(val)
+                }
+            }
+            
+            let matchingIDs = Set(allFonts.filter { font in
+                fileFontNames.contains { name in
+                    font.family.localizedCaseInsensitiveCompare(name) == .orderedSame ||
+                    font.name.localizedCaseInsensitiveCompare(name) == .orderedSame
+                }
+            }.map { $0.id })
+            
+            let missingNames = fileFontNames.filter { name in
+                !allFonts.contains { font in
+                    font.family.localizedCaseInsensitiveCompare(name) == .orderedSame ||
+                    font.name.localizedCaseInsensitiveCompare(name) == .orderedSame
+                }
+            }
+            
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if let phrase = loadedSample, !phrase.isEmpty {
+                    self.sampleText = phrase
+                }
+                self.removedFontIDs = Set(allFonts.map { $0.id }).subtracting(matchingIDs)
+                self.searchQuery = ""
+                self.showFavoritesOnly = false
+                self.currentFileURL = url
+            }
+            
+            if missingNames.isEmpty {
+                postStatus("Loaded \(matchingIDs.count) fonts from \(url.lastPathComponent)")
+            } else {
+                postStatus("Loaded \(matchingIDs.count)/\(fileFontNames.count) fonts (\(missingNames.count) not installed)")
+            }
+        } catch {
+            postStatus("Failed to open file: \(error.localizedDescription)")
+        }
     }
 }
 
 struct ContentView: View {
-    @StateObject private var vm = FontPickerViewModel()
+    @ObservedObject var vm: FontPickerViewModel
     
     private let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
     
@@ -131,7 +278,7 @@ struct ContentView: View {
                 HStack(spacing: 10) {
                     TextField("Filter by name...", text: $vm.searchQuery)
                         .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 200)
+                        .frame(maxWidth: 180)
                     
                     Button(action: {
                         withAnimation {
@@ -146,11 +293,45 @@ struct ContentView: View {
                     }
                     .buttonStyle(.bordered)
                     
-                    Text(vm.summaryCountText)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(vm.summaryCountText)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        if let status = vm.statusMessage {
+                            Text(status)
+                                .font(.caption)
+                                .foregroundColor(.accentColor)
+                                .transition(.opacity)
+                        }
+                    }
                     
                     Spacer()
+                    
+                    // File Actions Menu
+                    Menu {
+                        Button(action: { vm.openFile() }) {
+                            Label("Open Font List (.flxml)...", systemImage: "doc.badge.plus")
+                        }
+                        
+                        Divider()
+                        
+                        Button(action: { vm.saveFile() }) {
+                            Label("Save Font List", systemImage: "square.and.arrow.down")
+                        }
+                        
+                        Button(action: { vm.saveFileAs() }) {
+                            Label("Save Font List As...", systemImage: "square.and.arrow.down.on.square")
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "folder")
+                            Text(vm.currentFileURL != nil ? vm.currentFileURL!.deletingPathExtension().lastPathComponent : "Font List")
+                                .lineLimit(1)
+                        }
+                    }
+                    .menuStyle(.borderedButton)
+                    .help("Open or Save Font List files (.flxml)")
                     
                     if !vm.pinnedFonts.isEmpty && !vm.showFavoritesOnly {
                         Button("Copy Pinned (\(vm.pinnedFonts.count))") {
@@ -165,7 +346,7 @@ struct ContentView: View {
                     Button("Restore All (\(vm.removedFontIDs.count))") {
                         vm.restoreAll()
                     }
-                    .disabled(vm.removedFontIDs.isEmpty)
+                    .disabled(vm.removedFontIDs.isEmpty && vm.currentFileURL == nil)
                 }
             }
             .padding(14)
@@ -248,7 +429,18 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(minWidth: 700, minHeight: 520)
+        .frame(minWidth: 720, minHeight: 520)
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                if let url = url, url.pathExtension.lowercased() == "flxml" {
+                    DispatchQueue.main.async {
+                        vm.loadFromFile(url: url)
+                    }
+                }
+            }
+            return true
+        }
     }
     
     @ViewBuilder
@@ -322,9 +514,34 @@ struct ContentView: View {
 
 @main
 struct PickFontsApp: App {
+    @StateObject private var vm = FontPickerViewModel()
+    
     var body: some Scene {
-        WindowGroup("PickFonts") {
-            ContentView()
+        WindowGroup {
+            ContentView(vm: vm)
+                .navigationTitle(vm.currentFileURL != nil ? "\(vm.currentFileURL!.deletingPathExtension().lastPathComponent) — PickFonts" : "PickFonts")
+                .onOpenURL { url in
+                    vm.loadFromFile(url: url)
+                }
+        }
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Open Font List...") {
+                    vm.openFile()
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+            CommandGroup(replacing: .saveItem) {
+                Button("Save Font List") {
+                    vm.saveFile()
+                }
+                .keyboardShortcut("s", modifiers: .command)
+                
+                Button("Save Font List As...") {
+                    vm.saveFileAs()
+                }
+                .keyboardShortcut("S", modifiers: [.command, .shift])
+            }
         }
     }
 }
