@@ -94,6 +94,13 @@ struct PDFSampleSheetGenerator {
         dateFormatter.timeStyle = .short
         let dateString = dateFormatter.string(from: Date())
         
+        // Fixed print colors (independent of macOS Dark/Light Mode)
+        let printTextPrimary = NSColor(srgbRed: 0.08, green: 0.08, blue: 0.08, alpha: 1.0)
+        let printTextSecondary = NSColor(srgbRed: 0.42, green: 0.42, blue: 0.44, alpha: 1.0)
+        let printLineColor = NSColor(srgbRed: 0.85, green: 0.85, blue: 0.87, alpha: 1.0)
+        let printPinnedColor = NSColor(srgbRed: 0.88, green: 0.45, blue: 0.05, alpha: 1.0)
+        let printPageBackground = NSColor.white
+        
         func pdfY(_ topDownY: CGFloat) -> CGFloat {
             return pageHeight - topDownY
         }
@@ -101,6 +108,10 @@ struct PDFSampleSheetGenerator {
         for (pageIndex, pageItems) in pages.enumerated() {
             let pageNum = pageIndex + 1
             context.beginPDFPage(nil)
+            
+            // Explicitly paint page canvas white
+            context.setFillColor(printPageBackground.cgColor)
+            context.fill(CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
             
             let gc = NSGraphicsContext(cgContext: context, flipped: false)
             NSGraphicsContext.current = gc
@@ -113,7 +124,7 @@ struct PDFSampleSheetGenerator {
                     at: CGPoint(x: marginX, y: pdfY(yPos + 22)),
                     withAttributes: [
                         .font: NSFont.boldSystemFont(ofSize: 20),
-                        .foregroundColor: NSColor.labelColor
+                        .foregroundColor: printTextPrimary
                     ]
                 )
                 
@@ -123,7 +134,7 @@ struct PDFSampleSheetGenerator {
                     at: CGPoint(x: marginX, y: pdfY(yPos + 38)),
                     withAttributes: [
                         .font: NSFont.systemFont(ofSize: 9.5),
-                        .foregroundColor: NSColor.secondaryLabelColor
+                        .foregroundColor: printTextSecondary
                     ]
                 )
                 
@@ -132,11 +143,11 @@ struct PDFSampleSheetGenerator {
                     in: CGRect(x: marginX, y: pdfY(yPos + 60), width: contentWidth, height: 18),
                     withAttributes: [
                         .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-                        .foregroundColor: NSColor.labelColor
+                        .foregroundColor: printTextPrimary
                     ]
                 )
                 
-                context.setStrokeColor(NSColor.separatorColor.cgColor)
+                context.setStrokeColor(printLineColor.cgColor)
                 context.setLineWidth(0.75)
                 context.move(to: CGPoint(x: marginX, y: pdfY(yPos + 68)))
                 context.addLine(to: CGPoint(x: marginX + contentWidth, y: pdfY(yPos + 68)))
@@ -151,11 +162,11 @@ struct PDFSampleSheetGenerator {
                     at: CGPoint(x: marginX, y: pdfY(yPos + 12)),
                     withAttributes: [
                         .font: NSFont.systemFont(ofSize: 9),
-                        .foregroundColor: NSColor.secondaryLabelColor
+                        .foregroundColor: printTextSecondary
                     ]
                 )
                 
-                context.setStrokeColor(NSColor.separatorColor.cgColor)
+                context.setStrokeColor(printLineColor.cgColor)
                 context.setLineWidth(0.5)
                 context.move(to: CGPoint(x: marginX, y: pdfY(yPos + 18)))
                 context.addLine(to: CGPoint(x: marginX + contentWidth, y: pdfY(yPos + 18)))
@@ -174,7 +185,7 @@ struct PDFSampleSheetGenerator {
                 
                 let labelAttrs: [NSAttributedString.Key: Any] = [
                     .font: NSFont.boldSystemFont(ofSize: 9.5),
-                    .foregroundColor: measured.isPinned ? NSColor.systemOrange : NSColor.secondaryLabelColor
+                    .foregroundColor: measured.isPinned ? printPinnedColor : printTextSecondary
                 ]
                 (familyTitle as NSString).draw(
                     at: CGPoint(x: marginX, y: pdfY(yPos + 11)),
@@ -187,7 +198,7 @@ struct PDFSampleSheetGenerator {
                 
                 let previewAttrs: [NSAttributedString.Key: Any] = [
                     .font: itemFont,
-                    .foregroundColor: NSColor.labelColor
+                    .foregroundColor: printTextPrimary
                 ]
                 
                 let textRect = CGRect(
@@ -203,7 +214,7 @@ struct PDFSampleSheetGenerator {
                 )
                 
                 let divY = pdfY(yPos + measured.totalHeight - 3)
-                context.setStrokeColor(NSColor.separatorColor.withAlphaComponent(0.35).cgColor)
+                context.setStrokeColor(printLineColor.cgColor)
                 context.setLineWidth(0.5)
                 context.move(to: CGPoint(x: marginX, y: divY))
                 context.addLine(to: CGPoint(x: marginX + contentWidth, y: divY))
@@ -215,7 +226,7 @@ struct PDFSampleSheetGenerator {
             let footerPageText = "Page \(pageNum) of \(totalPages)" as NSString
             let footerAttrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 8.5),
-                .foregroundColor: NSColor.secondaryLabelColor
+                .foregroundColor: printTextSecondary
             ]
             let pageTextSize = footerPageText.size(withAttributes: footerAttrs)
             footerPageText.draw(
