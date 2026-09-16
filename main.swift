@@ -8,6 +8,235 @@ struct FontItem: Identifiable, Hashable {
     let family: String
 }
 
+struct PDFSampleSheetGenerator {
+    static func generatePDF(
+        sampleText: String,
+        fontSize: Double,
+        fonts: [FontItem],
+        favoriteFontIDs: Set<String>,
+        documentName: String?
+    ) -> Data {
+        let pageWidth: CGFloat = 612
+        let pageHeight: CGFloat = 792
+        let marginX: CGFloat = 46
+        let contentWidth = pageWidth - (marginX * 2)
+        let marginTop: CGFloat = 46
+        let marginBottom: CGFloat = 44
+        
+        let sampleSize = max(16, min(CGFloat(fontSize), 34))
+        let displayText = sampleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "The quick brown fox jumps over the lazy dog" : sampleText
+        
+        struct MeasuredItem {
+            let item: FontItem
+            let isPinned: Bool
+            let labelHeight: CGFloat
+            let previewHeight: CGFloat
+            let totalHeight: CGFloat
+        }
+        
+        var measuredItems: [MeasuredItem] = []
+        for item in fonts {
+            let font = NSFont(name: item.name, size: sampleSize) ??
+                       NSFont(name: item.family, size: sampleSize) ??
+                       NSFont.systemFont(ofSize: sampleSize)
+            
+            let previewRect = (displayText as NSString).boundingRect(
+                with: CGSize(width: contentWidth, height: 250),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: font]
+            )
+            let labelHeight: CGFloat = 16
+            let previewHeight = max(ceil(previewRect.height), sampleSize + 4)
+            let totalHeight = labelHeight + 3 + previewHeight + 14
+            
+            measuredItems.append(MeasuredItem(
+                item: item,
+                isPinned: favoriteFontIDs.contains(item.id),
+                labelHeight: labelHeight,
+                previewHeight: previewHeight,
+                totalHeight: totalHeight
+            ))
+        }
+        
+        let firstPageHeaderHeight: CGFloat = 86
+        let subsequentPageHeaderHeight: CGFloat = 34
+        let footerHeight: CGFloat = 24
+        
+        var pages: [[MeasuredItem]] = []
+        var currentPageItems: [MeasuredItem] = []
+        var currentY: CGFloat = firstPageHeaderHeight
+        let maxPageY = pageHeight - marginBottom - footerHeight
+        
+        for item in measuredItems {
+            if currentY + item.totalHeight > maxPageY && !currentPageItems.isEmpty {
+                pages.append(currentPageItems)
+                currentPageItems = []
+                currentY = subsequentPageHeaderHeight
+            }
+            currentPageItems.append(item)
+            currentY += item.totalHeight
+        }
+        if !currentPageItems.isEmpty || pages.isEmpty {
+            pages.append(currentPageItems)
+        }
+        
+        let totalPages = max(1, pages.count)
+        
+        let pdfData = NSMutableData()
+        let consumer = CGDataConsumer(data: pdfData as CFMutableData)!
+        var mediaBox = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
+        guard let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil) else {
+            return Data()
+        }
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .short
+        let dateString = dateFormatter.string(from: Date())
+        
+        func pdfY(_ topDownY: CGFloat) -> CGFloat {
+            return pageHeight - topDownY
+        }
+        
+        for (pageIndex, pageItems) in pages.enumerated() {
+            let pageNum = pageIndex + 1
+            context.beginPDFPage(nil)
+            
+            let gc = NSGraphicsContext(cgContext: context, flipped: false)
+            NSGraphicsContext.current = gc
+            
+            var yPos: CGFloat = marginTop
+            
+            if pageNum == 1 {
+                let title = "PickFonts Specimen Sheet" as NSString
+                title.draw(
+                    at: CGPoint(x: marginX, y: pdfY(yPos + 22)),
+                    withAttributes: [
+                        .font: NSFont.boldSystemFont(ofSize: 20),
+                        .foregroundColor: NSColor.labelColor
+                    ]
+                )
+                
+                let docLabel = documentName != nil ? "\(documentName!) • " : ""
+                let metaText = "\(docLabel)\(fonts.count) fonts • \(dateString)" as NSString
+                metaText.draw(
+                    at: CGPoint(x: marginX, y: pdfY(yPos + 38)),
+                    withAttributes: [
+                        .font: NSFont.systemFont(ofSize: 9.5),
+                        .foregroundColor: NSColor.secondaryLabelColor
+                    ]
+                )
+                
+                let phraseLabel = "Phrase: \"\(displayText)\"" as NSString
+                phraseLabel.draw(
+                    in: CGRect(x: marginX, y: pdfY(yPos + 60), width: contentWidth, height: 18),
+                    withAttributes: [
+                        .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                        .foregroundColor: NSColor.labelColor
+                    ]
+                )
+                
+                context.setStrokeColor(NSColor.separatorColor.cgColor)
+                context.setLineWidth(0.75)
+                context.move(to: CGPoint(x: marginX, y: pdfY(yPos + 68)))
+                context.addLine(to: CGPoint(x: marginX + contentWidth, y: pdfY(yPos + 68)))
+                context.strokePath()
+                
+                yPos += firstPageHeaderHeight
+            } else {
+                let prefixCount = min(40, displayText.count)
+                let prefixStr = String(displayText.prefix(prefixCount))
+                let headerText = "PickFonts Specimen Sheet — \"\(prefixStr)\(displayText.count > 40 ? "..." : "")\"" as NSString
+                headerText.draw(
+                    at: CGPoint(x: marginX, y: pdfY(yPos + 12)),
+                    withAttributes: [
+                        .font: NSFont.systemFont(ofSize: 9),
+                        .foregroundColor: NSColor.secondaryLabelColor
+                    ]
+                )
+                
+                context.setStrokeColor(NSColor.separatorColor.cgColor)
+                context.setLineWidth(0.5)
+                context.move(to: CGPoint(x: marginX, y: pdfY(yPos + 18)))
+                context.addLine(to: CGPoint(x: marginX + contentWidth, y: pdfY(yPos + 18)))
+                context.strokePath()
+                
+                yPos += subsequentPageHeaderHeight
+            }
+            
+            for measured in pageItems {
+                let item = measured.item
+                
+                var familyTitle = item.family
+                if measured.isPinned {
+                    familyTitle += "  [PINNED]"
+                }
+                
+                let labelAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.boldSystemFont(ofSize: 9.5),
+                    .foregroundColor: measured.isPinned ? NSColor.systemOrange : NSColor.secondaryLabelColor
+                ]
+                (familyTitle as NSString).draw(
+                    at: CGPoint(x: marginX, y: pdfY(yPos + 11)),
+                    withAttributes: labelAttrs
+                )
+                
+                let itemFont = NSFont(name: item.name, size: sampleSize) ??
+                               NSFont(name: item.family, size: sampleSize) ??
+                               NSFont.systemFont(ofSize: sampleSize)
+                
+                let previewAttrs: [NSAttributedString.Key: Any] = [
+                    .font: itemFont,
+                    .foregroundColor: NSColor.labelColor
+                ]
+                
+                let textRect = CGRect(
+                    x: marginX,
+                    y: pdfY(yPos + 14 + measured.previewHeight),
+                    width: contentWidth,
+                    height: measured.previewHeight
+                )
+                
+                (displayText as NSString).draw(
+                    in: textRect,
+                    withAttributes: previewAttrs
+                )
+                
+                let divY = pdfY(yPos + measured.totalHeight - 3)
+                context.setStrokeColor(NSColor.separatorColor.withAlphaComponent(0.35).cgColor)
+                context.setLineWidth(0.5)
+                context.move(to: CGPoint(x: marginX, y: divY))
+                context.addLine(to: CGPoint(x: marginX + contentWidth, y: divY))
+                context.strokePath()
+                
+                yPos += measured.totalHeight
+            }
+            
+            let footerPageText = "Page \(pageNum) of \(totalPages)" as NSString
+            let footerAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 8.5),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]
+            let pageTextSize = footerPageText.size(withAttributes: footerAttrs)
+            footerPageText.draw(
+                at: CGPoint(x: marginX + contentWidth - pageTextSize.width, y: marginBottom - 14),
+                withAttributes: footerAttrs
+            )
+            
+            let brandingText = "PickFonts for macOS" as NSString
+            brandingText.draw(
+                at: CGPoint(x: marginX, y: marginBottom - 14),
+                withAttributes: footerAttrs
+            )
+            
+            context.endPDFPage()
+        }
+        
+        context.closePDF()
+        return pdfData as Data
+    }
+}
+
 final class FontPickerViewModel: ObservableObject {
     @Published var sampleText: String = "The quick brown fox jumps over the lazy dog"
     @Published var fontSize: Double = 28.0
@@ -251,6 +480,33 @@ final class FontPickerViewModel: ObservableObject {
             postStatus("Failed to open file: \(error.localizedDescription)")
         }
     }
+    
+    func exportSampleSheetPDF() {
+        let panel = NSSavePanel()
+        panel.title = "Save Sample Sheet to PDF"
+        panel.message = "Choose a destination for your PDF font sample sheet"
+        let baseName = currentFileURL?.deletingPathExtension().lastPathComponent ?? "Font_Sample_Sheet"
+        panel.nameFieldStringValue = "\(baseName).pdf"
+        panel.allowedContentTypes = [.pdf]
+        panel.isExtensionHidden = false
+        
+        if panel.runModal() == .OK, let url = panel.url {
+            let pdfData = PDFSampleSheetGenerator.generatePDF(
+                sampleText: sampleText,
+                fontSize: fontSize,
+                fonts: visibleFonts,
+                favoriteFontIDs: favoriteFontIDs,
+                documentName: currentFileURL?.lastPathComponent
+            )
+            do {
+                try pdfData.write(to: url, options: .atomic)
+                postStatus("Saved PDF sample sheet to \(url.lastPathComponent)")
+                NSWorkspace.shared.open(url)
+            } catch {
+                postStatus("PDF export failed: \(error.localizedDescription)")
+            }
+        }
+    }
 }
 
 struct ContentView: View {
@@ -323,6 +579,12 @@ struct ContentView: View {
                         Button(action: { vm.saveFileAs() }) {
                             Label("Save Font List As...", systemImage: "square.and.arrow.down.on.square")
                         }
+                        
+                        Divider()
+                        
+                        Button(action: { vm.exportSampleSheetPDF() }) {
+                            Label("Save Sample Sheet to PDF...", systemImage: "arrow.down.doc")
+                        }
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "folder")
@@ -332,6 +594,15 @@ struct ContentView: View {
                     }
                     .menuStyle(.borderedButton)
                     .help("Open or Save Font List files (.flxml)")
+                    
+                    Button(action: { vm.exportSampleSheetPDF() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down.doc")
+                            Text("PDF")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Save sample sheet to PDF (⌘P)")
                     
                     if !vm.pinnedFonts.isEmpty && !vm.showFavoritesOnly {
                         Button("Copy Pinned (\(vm.pinnedFonts.count))") {
@@ -541,6 +812,13 @@ struct PickFontsApp: App {
                     vm.saveFileAs()
                 }
                 .keyboardShortcut("S", modifiers: [.command, .shift])
+            }
+            CommandGroup(after: .saveItem) {
+                Divider()
+                Button("Save Sample Sheet to PDF...") {
+                    vm.exportSampleSheetPDF()
+                }
+                .keyboardShortcut("p", modifiers: .command)
             }
         }
     }
