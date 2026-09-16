@@ -10,6 +10,7 @@ PickFonts is a clean-room rewrite built from the ground up for modern macOS rele
 - **Dynamic Font Browsing:** Renders real-time text previews using your installed system and user fonts.
 - **Interactive Sizing & Previewing:** Instant text customization and size adjustments.
 - **Quick Jump & Search:** A–Z fast-index navigation and instant substring filtering.
+- **Favorites & Pinning:** Pin your favorite fonts to the top of the list, toggle a "Favorites Only" view, and copy your shortlisted font names. Favorites persist automatically across restarts.
 - **Font Culling:** Dismiss unwanted fonts from the view with a single click to narrow down your final selections.
 
 ## Building from Source
