@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag version (e.g. v2.1.0)'
+        required: true
+        default: 'v2.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_NAME="${{ github.event.inputs.tag }}"
+          else
+            TAG_NAME="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG_NAME#v}"
+          echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Build Application Bundle
+        run: |
+          chmod +x ./build.sh
+          ./build.sh "${{ steps.version.outputs.version }}"
+
+      - name: Package App for Distribution
+        run: |
+          zip -yr "PickFonts-${{ steps.version.outputs.tag_name }}-macOS.zip" "PickFonts.app"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag_name }}
+          name: "PickFonts ${{ steps.version.outputs.tag_name }}"
+          files: "PickFonts-${{ steps.version.outputs.tag_name }}-macOS.zip"
+          generate_release_notes: true

@@ -13,6 +13,10 @@ PickFonts is a clean-room rewrite built from the ground up for modern macOS rele
 - **Favorites & Pinning:** Pin your favorite fonts to the top of the list, toggle a "Favorites Only" view, and copy your shortlisted font names. Favorites persist automatically across restarts.
 - **Font Culling:** Dismiss unwanted fonts from the view with a single click to narrow down your final selections.
 
+## Download
+
+Pre-compiled Apple Silicon builds are available on the [Releases](https://github.com/gedeyenite/PickFonts/releases) page. Download the `.zip` archive, extract it, and move `PickFonts.app` to your `/Applications` folder.
+
 ## Building from Source
 
 Requires macOS 14.0+ and Xcode Command Line Tools.
